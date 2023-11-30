@@ -1,0 +1,69 @@
+#! /usr/bin/perl -w
+package ifs_mailer;
+use strict;
+use Net::SMTP;
+use lib '/home/tccon/bin';
+use ifs_mailer_config;
+
+my %msg;
+my @msg;
+my @recipients;
+my $sender;
+my $hdr = 1;
+my @hdr;
+our %account;
+
+open STDERR, '>&STDOUT';
+
+while (my $line = <>) {
+  push(@msg, $line);
+}
+
+my @msg2 = @msg;
+my $line = shift @msg2;
+while ($line) {
+  if ($line =~ m/^$/) {
+    last;
+  } elsif ($line =~ s/^(?:To|Cc): //) {
+    chomp $line;
+    @hdr = ($line);
+    while (($line = shift(@msg2)) && $line =~ m/^\s/) {
+      chomp $line;
+      push(@hdr, $line);
+    }
+    push(@recipients, map { s/^\s+//; $_; } split(',',join('',@hdr)));
+  } else {
+    $line = shift @msg2;
+  }
+}
+
+my $smtp = Net::SMTP->new(Host => $account{server}, Port => $account{port}) ||
+  die "Unable to connect to " . $account{server} . ":" . $account{port} . "\n";
+$smtp->starttls() || die $smtp->message();
+
+# Below is a hack because endymion is currently disallowing auth
+# for this IP address. A better approach is to examine $smtp->message()
+# and recognize the 'AUTH not supported' message and ignore it.
+if (exists ${*$smtp}{'net_smtp_esmtp'}->{AUTH}) {
+  $smtp->auth($account{username}, $account{password}) ||
+    die $smtp->message();
+}
+$smtp->mail($account{username}) ||
+  die $smtp->message();
+my $has_good_addr = 0;
+for my $recipient (@recipients) {
+  if ($smtp->recipient($recipient, { Notify => ['NEVER'] })) {
+    $has_good_addr = 1;
+  } else {
+    print $smtp->message();
+  }
+}
+die "No valid addresses\n" unless $has_good_addr;
+$smtp->data() || die $smtp->message();
+for (@msg) {
+  $smtp->datasend($_) || die $smtp->message();
+}
+$smtp->dataend();
+print $smtp->message();
+$smtp->quit();
+exit(0);

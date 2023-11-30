@@ -1,0 +1,10 @@
+package ifs_mailer;
+
+our %account = (
+  username => 'my_username',
+  password => 'my_password',
+  server => 'smtp.example.com',
+  port => 587
+);
+
+1;
